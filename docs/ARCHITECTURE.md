@@ -29,13 +29,19 @@ physical ingest tasks and report newly created manifests.
   to advertise health and progress metrics.
 
 ## Interaction with iceberg-go distributed snapshots
-1. The coordinator loads the target table through `internal/iceberg.Client` and
-   invokes `BeginDistributedSnapshot`. The resulting snapshot metadata and
-   manifest list path are distributed to the workers through the gRPC API.
-2. Workers use the provided snapshot identifier when writing manifests via the
+1. The coordinator loads the target table through the `internal/iceberg`
+   wrapper. The wrapper hides catalog initialization (REST/Glue/etc.), exposes a
+   `TableClient` interface, and translates the forked `iceberg-go` API into data
+   structures that are convenient for the coordinator and workers.
+2. `BeginDistributedSnapshot` is invoked once per job. The coordinator stores
+   the returned descriptor (snapshot id, optional parent id, commit UUID, and
+   snapshot properties) in an in-memory `JobManager`. The gRPC `StartJob`
+   response returns the snapshot id and commit UUID so workers can derive
+   manifest names deterministically.
+3. Workers use the provided snapshot identifier when writing manifests via the
    extended functionality of the forked `iceberg-go` library. Each manifest is
    persisted locally or in shared storage and then reported back to the
    coordinator.
-3. After collecting manifests from all workers, the coordinator performs the
+4. After collecting manifests from all workers, the coordinator performs the
    final `CommitDistributedSnapshot`, passing the snapshot metadata plus the
    ordered manifest paths, to atomically publish the ingest.

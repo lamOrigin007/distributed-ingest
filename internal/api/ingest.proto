@@ -13,8 +13,8 @@ message TableIdentifier {
 message DistributedSnapshot {
   int64 snapshot_id = 1;
   int64 parent_snapshot_id = 2;
-  string manifest_list_path = 3;
-  string summary = 4;
+  string commit_uuid = 3;
+  map<string, string> properties = 4;
 }
 
 message Task {

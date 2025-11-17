@@ -10,6 +10,7 @@ import (
 
 	"github.com/example/distributed-ingest/internal/api"
 	"github.com/example/distributed-ingest/internal/coordinator"
+	"github.com/example/distributed-ingest/internal/iceberg"
 	"google.golang.org/grpc"
 )
 
@@ -23,8 +24,13 @@ func main() {
 		log.Fatalf("failed to listen on %s: %v", addr, err)
 	}
 
+	client, err := newTableClient(ctx)
+	if err != nil {
+		log.Fatalf("failed to initialize iceberg client: %v", err)
+	}
+	jobManager := coordinator.NewJobManager(client)
 	grpcServer := grpc.NewServer()
-	api.RegisterCoordinatorServer(grpcServer, coordinator.NewService())
+	api.RegisterCoordinatorServer(grpcServer, coordinator.NewService(jobManager))
 
 	go func() {
 		<-ctx.Done()
@@ -43,4 +49,24 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func newTableClient(ctx context.Context) (iceberg.TableClient, error) {
+	name := getEnv("ICEBERG_CATALOG_NAME", "default")
+	typeName := getEnv("ICEBERG_CATALOG_TYPE", "rest")
+	props := map[string]string{"type": typeName}
+	if uri := os.Getenv("ICEBERG_CATALOG_URI"); uri != "" {
+		props["uri"] = uri
+	}
+	if warehouse := os.Getenv("ICEBERG_WAREHOUSE"); warehouse != "" {
+		props["warehouse"] = warehouse
+	}
+
+	return iceberg.NewClient(ctx, iceberg.Config{
+		DefaultCatalog: name,
+		Catalogs: []iceberg.CatalogConfig{{
+			Name:       name,
+			Properties: props,
+		}},
+	})
 }
