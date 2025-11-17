@@ -597,6 +597,9 @@ type AssignTasksRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	JobId         string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Table         *TableIdentifier       `protobuf:"bytes,3,opt,name=table,proto3" json:"table,omitempty"`
+	Snapshot      *DistributedSnapshot   `protobuf:"bytes,4,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	Tasks         []*Task                `protobuf:"bytes,5,rep,name=tasks,proto3" json:"tasks,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -645,14 +648,36 @@ func (x *AssignTasksRequest) GetJobId() string {
 	return ""
 }
 
+func (x *AssignTasksRequest) GetTable() *TableIdentifier {
+	if x != nil {
+		return x.Table
+	}
+	return nil
+}
+
+func (x *AssignTasksRequest) GetSnapshot() *DistributedSnapshot {
+	if x != nil {
+		return x.Snapshot
+	}
+	return nil
+}
+
+func (x *AssignTasksRequest) GetTasks() []*Task {
+	if x != nil {
+		return x.Tasks
+	}
+	return nil
+}
+
 type AssignTasksResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	Table         *TableIdentifier       `protobuf:"bytes,2,opt,name=table,proto3" json:"table,omitempty"`
-	Snapshot      *DistributedSnapshot   `protobuf:"bytes,3,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
-	Tasks         []*Task                `protobuf:"bytes,4,rep,name=tasks,proto3" json:"tasks,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId         string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	JobId            string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	TasksCompleted   uint32                 `protobuf:"varint,3,opt,name=tasks_completed,json=tasksCompleted,proto3" json:"tasks_completed,omitempty"`
+	ManifestsCreated uint32                 `protobuf:"varint,4,opt,name=manifests_created,json=manifestsCreated,proto3" json:"manifests_created,omitempty"`
+	Message          string                 `protobuf:"bytes,5,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *AssignTasksResponse) Reset() {
@@ -685,6 +710,13 @@ func (*AssignTasksResponse) Descriptor() ([]byte, []int) {
 	return file_internal_api_ingest_proto_rawDescGZIP(), []int{10}
 }
 
+func (x *AssignTasksResponse) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
 func (x *AssignTasksResponse) GetJobId() string {
 	if x != nil {
 		return x.JobId
@@ -692,25 +724,25 @@ func (x *AssignTasksResponse) GetJobId() string {
 	return ""
 }
 
-func (x *AssignTasksResponse) GetTable() *TableIdentifier {
+func (x *AssignTasksResponse) GetTasksCompleted() uint32 {
 	if x != nil {
-		return x.Table
+		return x.TasksCompleted
 	}
-	return nil
+	return 0
 }
 
-func (x *AssignTasksResponse) GetSnapshot() *DistributedSnapshot {
+func (x *AssignTasksResponse) GetManifestsCreated() uint32 {
 	if x != nil {
-		return x.Snapshot
+		return x.ManifestsCreated
 	}
-	return nil
+	return 0
 }
 
-func (x *AssignTasksResponse) GetTasks() []*Task {
+func (x *AssignTasksResponse) GetMessage() string {
 	if x != nil {
-		return x.Tasks
+		return x.Message
 	}
-	return nil
+	return ""
 }
 
 type HeartbeatRequest struct {
@@ -881,15 +913,19 @@ const file_internal_api_ingest_proto_rawDesc = "" +
 	"\x0emanifest_paths\x18\x05 \x03(\tR\rmanifestPaths\"N\n" +
 	"\x16ReportManifestResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"H\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\xcb\x01\n" +
 	"\x12AssignTasksRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x15\n" +
-	"\x06job_id\x18\x02 \x01(\tR\x05jobId\"\xaf\x01\n" +
-	"\x13AssignTasksResponse\x12\x15\n" +
-	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12*\n" +
-	"\x05table\x18\x02 \x01(\v2\x14.api.TableIdentifierR\x05table\x124\n" +
-	"\bsnapshot\x18\x03 \x01(\v2\x18.api.DistributedSnapshotR\bsnapshot\x12\x1f\n" +
-	"\x05tasks\x18\x04 \x03(\v2\t.api.TaskR\x05tasks\"^\n" +
+	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12*\n" +
+	"\x05table\x18\x03 \x01(\v2\x14.api.TableIdentifierR\x05table\x124\n" +
+	"\bsnapshot\x18\x04 \x01(\v2\x18.api.DistributedSnapshotR\bsnapshot\x12\x1f\n" +
+	"\x05tasks\x18\x05 \x03(\v2\t.api.TaskR\x05tasks\"\xb9\x01\n" +
+	"\x13AssignTasksResponse\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x15\n" +
+	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12'\n" +
+	"\x0ftasks_completed\x18\x03 \x01(\rR\x0etasksCompleted\x12+\n" +
+	"\x11manifests_created\x18\x04 \x01(\rR\x10manifestsCreated\x12\x18\n" +
+	"\amessage\x18\x05 \x01(\tR\amessage\"^\n" +
 	"\x10HeartbeatRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x16\n" +
@@ -942,9 +978,9 @@ var file_internal_api_ingest_proto_depIdxs = []int32{
 	2,  // 4: api.StartJobResponse.tasks:type_name -> api.Task
 	0,  // 5: api.CommitJobRequest.table:type_name -> api.TableIdentifier
 	0,  // 6: api.ReportManifestRequest.table:type_name -> api.TableIdentifier
-	0,  // 7: api.AssignTasksResponse.table:type_name -> api.TableIdentifier
-	1,  // 8: api.AssignTasksResponse.snapshot:type_name -> api.DistributedSnapshot
-	2,  // 9: api.AssignTasksResponse.tasks:type_name -> api.Task
+	0,  // 7: api.AssignTasksRequest.table:type_name -> api.TableIdentifier
+	1,  // 8: api.AssignTasksRequest.snapshot:type_name -> api.DistributedSnapshot
+	2,  // 9: api.AssignTasksRequest.tasks:type_name -> api.Task
 	3,  // 10: api.Coordinator.StartJob:input_type -> api.StartJobRequest
 	5,  // 11: api.Coordinator.CommitJob:input_type -> api.CommitJobRequest
 	7,  // 12: api.Coordinator.ReportManifest:input_type -> api.ReportManifestRequest

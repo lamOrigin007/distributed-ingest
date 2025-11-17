@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	icebergpkg "github.com/apache/iceberg-go"
+	icebergio "github.com/apache/iceberg-go/io"
 	"github.com/example/distributed-ingest/internal/iceberg"
 )
 
@@ -106,4 +108,16 @@ func (f *fakeTable) BeginDistributedSnapshot(ctx context.Context, props map[stri
 
 func (f *fakeTable) CommitDistributedSnapshot(ctx context.Context, ds *iceberg.DistributedSnapshot, manifests []iceberg.ManifestInfo, summary map[string]string) error {
 	return nil
+}
+
+func (f *fakeTable) CurrentSchema() *icebergpkg.Schema { return icebergpkg.NewSchema(0) }
+
+func (f *fakeTable) PartitionSpec() icebergpkg.PartitionSpec { return *icebergpkg.UnpartitionedSpec }
+
+func (f *fakeTable) FormatVersion() int { return 2 }
+
+func (f *fakeTable) Location() string { return "file:///tmp/test" }
+
+func (f *fakeTable) IO(context.Context) (icebergio.WriteFileIO, error) {
+	return icebergio.LocalFS{}, nil
 }

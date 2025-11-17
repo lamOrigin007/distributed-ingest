@@ -65,13 +65,17 @@ message ReportManifestResponse {
 message AssignTasksRequest {
   string worker_id = 1;
   string job_id = 2;
+  TableIdentifier table = 3;
+  DistributedSnapshot snapshot = 4;
+  repeated Task tasks = 5;
 }
 
 message AssignTasksResponse {
-  string job_id = 1;
-  TableIdentifier table = 2;
-  DistributedSnapshot snapshot = 3;
-  repeated Task tasks = 4;
+  string worker_id = 1;
+  string job_id = 2;
+  uint32 tasks_completed = 3;
+  uint32 manifests_created = 4;
+  string message = 5;
 }
 
 message HeartbeatRequest {
