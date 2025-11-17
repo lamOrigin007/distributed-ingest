@@ -11,6 +11,7 @@ import (
 	"github.com/apache/iceberg-go/catalog"
 	_ "github.com/apache/iceberg-go/catalog/glue"
 	_ "github.com/apache/iceberg-go/catalog/rest"
+	icebergio "github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
 )
 
@@ -68,6 +69,11 @@ func (m ManifestInfo) FilePath() string {
 type Table interface {
 	BeginDistributedSnapshot(ctx context.Context, props map[string]string) (*DistributedSnapshot, error)
 	CommitDistributedSnapshot(ctx context.Context, ds *DistributedSnapshot, manifests []ManifestInfo, summary map[string]string) error
+	CurrentSchema() *icebergpkg.Schema
+	PartitionSpec() icebergpkg.PartitionSpec
+	FormatVersion() int
+	Location() string
+	IO(ctx context.Context) (icebergio.WriteFileIO, error)
 }
 
 // TableClient opens table handles from configured catalogs.
@@ -185,6 +191,34 @@ func (h *tableHandle) CommitDistributedSnapshot(ctx context.Context, ds *Distrib
 
 	_, err := h.tbl.CommitDistributedSnapshot(ctx, ds.descriptor, manifestFiles, summary)
 	return err
+}
+
+func (h *tableHandle) CurrentSchema() *icebergpkg.Schema {
+	return h.tbl.Schema()
+}
+
+func (h *tableHandle) PartitionSpec() icebergpkg.PartitionSpec {
+	return h.tbl.Spec()
+}
+
+func (h *tableHandle) FormatVersion() int {
+	return h.tbl.Metadata().Version()
+}
+
+func (h *tableHandle) Location() string {
+	return h.tbl.Location()
+}
+
+func (h *tableHandle) IO(ctx context.Context) (icebergio.WriteFileIO, error) {
+	fs, err := h.tbl.FS(ctx)
+	if err != nil {
+		return nil, err
+	}
+	writer, ok := fs.(icebergio.WriteFileIO)
+	if !ok {
+		return nil, errors.New("iceberg: table filesystem does not support writes")
+	}
+	return writer, nil
 }
 
 func newDistributedSnapshot(ds *table.DistributedSnapshot) *DistributedSnapshot {
