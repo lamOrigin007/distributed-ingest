@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	icebergpkg "github.com/apache/iceberg-go"
 	icebergio "github.com/apache/iceberg-go/io"
@@ -16,7 +17,7 @@ func TestJobManagerCreateJob(t *testing.T) {
 	client := &fakeTableClient{table: tbl}
 
 	jm := NewJobManager(client)
-	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Catalog: "test", Namespace: "ns", Table: "tbl"}, map[string]string{"attempt": "1"})
+	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Catalog: "test", Namespace: "ns", Table: "tbl"}, map[string]string{"attempt": "1"}, time.Minute)
 	if err != nil {
 		t.Fatalf("CreateJob failed: %v", err)
 	}
@@ -43,7 +44,7 @@ func TestJobManagerAddManifest(t *testing.T) {
 	snapshot := &iceberg.DistributedSnapshot{SnapshotID: 101}
 	jm := NewJobManager(&fakeTableClient{table: &fakeTable{snapshot: snapshot}})
 
-	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Table: "tbl"}, nil)
+	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Table: "tbl"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("CreateJob failed: %v", err)
 	}
@@ -69,11 +70,42 @@ func TestJobManagerAddManifest(t *testing.T) {
 	}
 }
 
+func TestJobManagerAddManifestIdempotent(t *testing.T) {
+	snapshot := &iceberg.DistributedSnapshot{SnapshotID: 55}
+	jm := NewJobManager(&fakeTableClient{table: &fakeTable{snapshot: snapshot}})
+	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Table: "tbl"}, nil, time.Minute)
+	if err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	manifest := iceberg.ManifestInfo{Path: "manifest.avro"}
+	ready, err := jm.AddManifest(job.ID, manifest)
+	if err != nil {
+		t.Fatalf("AddManifest failed: %v", err)
+	}
+	if !ready {
+		t.Fatalf("job should be ready after first manifest")
+	}
+	ready, err = jm.AddManifest(job.ID, manifest)
+	if err != nil {
+		t.Fatalf("AddManifest failed on duplicate: %v", err)
+	}
+	if ready {
+		t.Fatalf("duplicate manifest should not retrigger readiness")
+	}
+	stored, ok := jm.GetJob(job.ID)
+	if !ok {
+		t.Fatalf("job lookup failed")
+	}
+	if len(stored.Manifests) != 1 {
+		t.Fatalf("expected 1 manifest after duplicate, got %d", len(stored.Manifests))
+	}
+}
+
 func TestJobManagerDistributedSnapshotPreserved(t *testing.T) {
 	snapshot := &iceberg.DistributedSnapshot{SnapshotID: 7}
 	jm := NewJobManager(&fakeTableClient{table: &fakeTable{snapshot: snapshot}})
 
-	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Table: "tbl"}, nil)
+	job, err := jm.CreateJob(context.Background(), iceberg.TableIdentifier{Table: "tbl"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("CreateJob failed: %v", err)
 	}
@@ -97,7 +129,7 @@ func TestJobManagerCommitJobSuccess(t *testing.T) {
 	tbl := &fakeTable{snapshot: snapshot}
 	jm := NewJobManager(&fakeTableClient{table: tbl})
 
-	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil)
+	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("CreateJob failed: %v", err)
 	}
@@ -139,7 +171,7 @@ func TestJobManagerCommitJobConflict(t *testing.T) {
 	tbl := &fakeTable{snapshot: snapshot, commitErr: iceberg.ErrCommitConflict}
 	jm := NewJobManager(&fakeTableClient{table: tbl})
 
-	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil)
+	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil, time.Minute)
 	if err != nil {
 		t.Fatalf("CreateJob failed: %v", err)
 	}
@@ -163,6 +195,27 @@ func TestJobManagerCommitJobConflict(t *testing.T) {
 	}
 	if stored.Status != JobStatusConflict {
 		t.Fatalf("expected status %s, got %s", JobStatusConflict, stored.Status)
+	}
+}
+
+func TestJobManagerTimeout(t *testing.T) {
+	ctx := context.Background()
+	snapshot := &iceberg.DistributedSnapshot{SnapshotID: 200}
+	jm := NewJobManager(&fakeTableClient{table: &fakeTable{snapshot: snapshot}})
+	now := time.Now()
+	jm.nowFn = func() time.Time { return now }
+	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil, time.Second)
+	if err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	now = now.Add(2 * time.Second)
+	jm.expireStaleJobs()
+	stored, ok := jm.GetJob(job.ID)
+	if !ok {
+		t.Fatalf("job lookup failed")
+	}
+	if stored.Status != JobStatusFailed {
+		t.Fatalf("expected status %s, got %s", JobStatusFailed, stored.Status)
 	}
 }
 

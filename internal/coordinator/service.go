@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	"github.com/example/distributed-ingest/internal/api"
 	"github.com/example/distributed-ingest/internal/iceberg"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+const defaultJobTimeout = 15 * time.Minute
 
 // Service implements the Coordinator gRPC server interface.
 type Service struct {
@@ -36,7 +39,11 @@ func (s *Service) StartJob(ctx context.Context, req *api.StartJobRequest) (*api.
 		props["requested_by"] = req.Requester
 	}
 
-	job, err := s.jobs.CreateJob(ctx, fromProtoTable(req.Table), props)
+	jobTimeout := defaultJobTimeout
+	if req.GetJobTimeoutSeconds() > 0 {
+		jobTimeout = time.Duration(req.GetJobTimeoutSeconds()) * time.Second
+	}
+	job, err := s.jobs.CreateJob(ctx, fromProtoTable(req.Table), props, jobTimeout)
 	if err != nil {
 		if errors.Is(err, errTableClientMissing) {
 			return nil, status.Error(codes.FailedPrecondition, "iceberg table client is not initialized")
@@ -124,6 +131,21 @@ func (s *Service) ReportManifest(ctx context.Context, req *api.ReportManifestReq
 	return &api.ReportManifestResponse{Accepted: true}, nil
 }
 
+// GetJobStatus returns the latest state tracked for the provided job.
+func (s *Service) GetJobStatus(ctx context.Context, req *api.GetJobStatusRequest) (*api.GetJobStatusResponse, error) {
+	if s.jobs == nil {
+		return nil, status.Error(codes.FailedPrecondition, "job manager is not configured")
+	}
+	if req == nil || req.JobId == "" {
+		return nil, status.Error(codes.InvalidArgument, "job_id is required")
+	}
+	job, ok := s.jobs.GetJob(req.JobId)
+	if !ok {
+		return nil, status.Error(codes.NotFound, "job not found")
+	}
+	return &api.GetJobStatusResponse{Job: toProtoJobStatus(job)}, nil
+}
+
 func translateCommitError(err error, jobID string) error {
 	if errors.Is(err, errTableClientMissing) {
 		return status.Error(codes.FailedPrecondition, "iceberg table client is not configured")
@@ -168,6 +190,29 @@ func toProtoSnapshot(ds *iceberg.DistributedSnapshot) *api.DistributedSnapshot {
 		result.ParentSnapshotId = *ds.ParentSnapshotID
 	}
 	return result
+}
+
+func toProtoJobStatus(job *IngestJob) *api.JobStatus {
+	if job == nil {
+		return nil
+	}
+	return &api.JobStatus{
+		JobId:                 job.ID,
+		Status:                string(job.Status),
+		ManifestCount:         uint32(len(job.Manifests)),
+		ReadyToCommit:         job.ReadyToCommit,
+		ExpectedManifestCount: uint32(max(job.ExpectedManifests, 0)),
+		CreatedAtEpochMs:      job.CreatedAt.UnixMilli(),
+		UpdatedAtEpochMs:      job.UpdatedAt.UnixMilli(),
+		DeadlineEpochMs:       job.Deadline.UnixMilli(),
+	}
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func mapsClone(src map[string]string) map[string]string {

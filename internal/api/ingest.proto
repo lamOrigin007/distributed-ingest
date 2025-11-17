@@ -27,6 +27,7 @@ message Task {
 message StartJobRequest {
   TableIdentifier table = 1;
   string requester = 2;
+  int64 job_timeout_seconds = 3;
 }
 
 message StartJobResponse {
@@ -89,10 +90,30 @@ message HeartbeatResponse {
   string instructions = 2;
 }
 
+message GetJobStatusRequest {
+  string job_id = 1;
+}
+
+message JobStatus {
+  string job_id = 1;
+  string status = 2;
+  uint32 manifest_count = 3;
+  bool ready_to_commit = 4;
+  uint32 expected_manifest_count = 5;
+  int64 created_at_epoch_ms = 6;
+  int64 updated_at_epoch_ms = 7;
+  int64 deadline_epoch_ms = 8;
+}
+
+message GetJobStatusResponse {
+  JobStatus job = 1;
+}
+
 service Coordinator {
   rpc StartJob(StartJobRequest) returns (StartJobResponse);
   rpc CommitJob(CommitJobRequest) returns (CommitJobResponse);
   rpc ReportManifest(ReportManifestRequest) returns (ReportManifestResponse);
+  rpc GetJobStatus(GetJobStatusRequest) returns (GetJobStatusResponse);
 }
 
 service Worker {

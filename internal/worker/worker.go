@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"sync"
 
 	icebergpkg "github.com/apache/iceberg-go"
 	icebergio "github.com/apache/iceberg-go/io"
@@ -24,6 +25,8 @@ type Worker struct {
 	coord      CoordinatorReporter
 	tables     iceberg.TableClient
 	dataSource DataSource
+	mu         sync.Mutex
+	completed  map[string]map[string]iceberg.ManifestInfo
 }
 
 // NewWorker constructs a worker instance.
@@ -33,6 +36,7 @@ func NewWorker(id string, coord CoordinatorReporter, tables iceberg.TableClient,
 		coord:      coord,
 		tables:     tables,
 		dataSource: dataSource,
+		completed:  make(map[string]map[string]iceberg.ManifestInfo),
 	}
 }
 
@@ -87,13 +91,15 @@ func (w *Worker) ProcessAssignments(ctx context.Context, req *api.AssignTasksReq
 	snapshotID := req.Snapshot.SnapshotId
 
 	for _, task := range req.Tasks {
-		info, err := w.processTask(ctx, task, spec, schema, formatVersion, snapshotID, fs, location, req.JobId)
+		info, reused, err := w.ensureTaskManifest(ctx, task, spec, schema, formatVersion, snapshotID, fs, location, req.JobId)
 		if err != nil {
 			return nil, fmt.Errorf("task %q: %w", task.GetTaskId(), err)
 		}
 		if info.FilePath() != "" {
 			manifestPaths = append(manifestPaths, info.FilePath())
-			manifestsCreated++
+			if !reused {
+				manifestsCreated++
+			}
 		}
 	}
 
@@ -110,6 +116,35 @@ func (w *Worker) ProcessAssignments(ctx context.Context, req *api.AssignTasksReq
 		ManifestsCreated: manifestsCreated,
 		Message:          "ok",
 	}, nil
+}
+
+func (w *Worker) ensureTaskManifest(
+	ctx context.Context,
+	task *api.Task,
+	spec icebergpkg.PartitionSpec,
+	schema *icebergpkg.Schema,
+	formatVersion int,
+	snapshotID int64,
+	fs icebergio.WriteFileIO,
+	location string,
+	jobID string,
+) (iceberg.ManifestInfo, bool, error) {
+	if task == nil {
+		return iceberg.ManifestInfo{}, false, errors.New("task description is required")
+	}
+	taskID := task.GetTaskId()
+	if taskID == "" {
+		return iceberg.ManifestInfo{}, false, errors.New("task_id is required")
+	}
+	if info, ok := w.getCompletedManifest(jobID, taskID); ok {
+		return info, true, nil
+	}
+	info, err := w.processTask(ctx, task, spec, schema, formatVersion, snapshotID, fs, location, jobID)
+	if err != nil {
+		return iceberg.ManifestInfo{}, false, err
+	}
+	w.recordCompletedManifest(jobID, taskID, info)
+	return info, false, nil
 }
 
 func (w *Worker) processTask(
@@ -174,4 +209,28 @@ func toInternalTable(tbl *api.TableIdentifier) iceberg.TableIdentifier {
 		Namespace: tbl.Namespace,
 		Table:     tbl.Table,
 	}
+}
+
+func (w *Worker) getCompletedManifest(jobID, taskID string) (iceberg.ManifestInfo, bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if jobTasks, ok := w.completed[jobID]; ok {
+		info, ok := jobTasks[taskID]
+		return info, ok
+	}
+	return iceberg.ManifestInfo{}, false
+}
+
+func (w *Worker) recordCompletedManifest(jobID, taskID string, manifest iceberg.ManifestInfo) {
+	if manifest.FilePath() == "" {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	jobTasks, ok := w.completed[jobID]
+	if !ok {
+		jobTasks = make(map[string]iceberg.ManifestInfo)
+		w.completed[jobID] = jobTasks
+	}
+	jobTasks[taskID] = manifest
 }

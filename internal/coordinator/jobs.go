@@ -3,8 +3,10 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"log"
 	"maps"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -29,10 +31,15 @@ type IngestJob struct {
 	TableID             iceberg.TableIdentifier
 	DistributedSnapshot *iceberg.DistributedSnapshot
 	Manifests           []iceberg.ManifestInfo
+	manifestPaths       map[string]struct{}
 	Status              JobStatus
 	ExpectedManifests   int
 	ReadyToCommit       bool
 	Summary             map[string]string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+	Timeout             time.Duration
+	Deadline            time.Time
 }
 
 var (
@@ -55,6 +62,8 @@ type JobManager struct {
 
 	tableClient iceberg.TableClient
 	idFn        func() string
+	nowFn       func() time.Time
+	defaultTTL  time.Duration
 }
 
 // NewJobManager constructs a new in-memory job manager.
@@ -63,12 +72,14 @@ func NewJobManager(tableClient iceberg.TableClient) *JobManager {
 		jobs:        make(map[string]*IngestJob),
 		tableClient: tableClient,
 		idFn:        func() string { return uuid.NewString() },
+		nowFn:       time.Now,
+		defaultTTL:  10 * time.Minute,
 	}
 }
 
 // CreateJob opens the target table, reserves a distributed snapshot and stores
 // an in-memory job record.
-func (jm *JobManager) CreateJob(ctx context.Context, tableID iceberg.TableIdentifier, props map[string]string) (*IngestJob, error) {
+func (jm *JobManager) CreateJob(ctx context.Context, tableID iceberg.TableIdentifier, props map[string]string, timeout time.Duration) (*IngestJob, error) {
 	if jm.tableClient == nil {
 		return nil, errTableClientMissing
 	}
@@ -83,6 +94,10 @@ func (jm *JobManager) CreateJob(ctx context.Context, tableID iceberg.TableIdenti
 		return nil, err
 	}
 
+	now := jm.nowFn()
+	if timeout <= 0 {
+		timeout = jm.defaultTTL
+	}
 	job := &IngestJob{
 		ID:                  jm.idFn(),
 		TableID:             tableID,
@@ -90,6 +105,11 @@ func (jm *JobManager) CreateJob(ctx context.Context, tableID iceberg.TableIdenti
 		Status:              JobStatusRunning,
 		ExpectedManifests:   1,
 		Summary:             map[string]string{"operation": "append"},
+		manifestPaths:       make(map[string]struct{}),
+		CreatedAt:           now,
+		UpdatedAt:           now,
+		Timeout:             timeout,
+		Deadline:            now.Add(timeout),
 	}
 
 	jm.mu.Lock()
@@ -130,8 +150,22 @@ func (jm *JobManager) AddManifest(jobID string, manifest iceberg.ManifestInfo) (
 	if !ok {
 		return false, ErrJobNotFound
 	}
+	if job.manifestPaths == nil {
+		job.manifestPaths = make(map[string]struct{})
+	}
+	if job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusConflict {
+		return false, nil
+	}
 
+	path := manifest.FilePath()
+	if path != "" {
+		if _, exists := job.manifestPaths[path]; exists {
+			return false, nil
+		}
+		job.manifestPaths[path] = struct{}{}
+	}
 	job.Manifests = append(job.Manifests, manifest)
+	jm.touchLocked(job, true)
 	if job.Status == JobStatusPending {
 		job.Status = JobStatusRunning
 	}
@@ -176,6 +210,7 @@ func (jm *JobManager) CommitJob(ctx context.Context, jobID string) error {
 		return ErrJobNotReady
 	}
 	job.Status = JobStatusCommitting
+	jm.touchLocked(job, false)
 	manifests := append([]iceberg.ManifestInfo(nil), job.Manifests...)
 	ds := job.DistributedSnapshot
 	tableID := job.TableID
@@ -213,6 +248,7 @@ func (jm *JobManager) setStatus(jobID string, status JobStatus) {
 	defer jm.mu.Unlock()
 	if job, ok := jm.jobs[jobID]; ok {
 		job.Status = status
+		jm.touchLocked(job, false)
 	}
 }
 
@@ -227,6 +263,7 @@ func (jm *JobManager) MarkCommitting(jobID string) error {
 	}
 
 	job.Status = JobStatusCommitting
+	jm.touchLocked(job, false)
 	return nil
 }
 
@@ -241,6 +278,7 @@ func (jm *JobManager) MarkCompleted(jobID string) error {
 	}
 
 	job.Status = JobStatusCompleted
+	jm.touchLocked(job, false)
 	return nil
 }
 
@@ -255,5 +293,63 @@ func (jm *JobManager) MarkFailed(jobID string) error {
 	}
 
 	job.Status = JobStatusFailed
+	jm.touchLocked(job, false)
 	return nil
+}
+
+// StartTimeoutWatcher launches a background goroutine that periodically scans for
+// jobs that exceeded their deadline and marks them as failed.
+func (jm *JobManager) StartTimeoutWatcher(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				jm.expireStaleJobs()
+			}
+		}
+	}()
+}
+
+func (jm *JobManager) expireStaleJobs() {
+	now := jm.nowFn()
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+	for _, job := range jm.jobs {
+		if job == nil {
+			continue
+		}
+		if job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusConflict {
+			continue
+		}
+		deadline := job.Deadline
+		if deadline.IsZero() && job.Timeout > 0 {
+			deadline = job.UpdatedAt.Add(job.Timeout)
+		}
+		if deadline.IsZero() {
+			continue
+		}
+		if now.After(deadline) {
+			job.Status = JobStatusFailed
+			job.ReadyToCommit = false
+			jm.touchLocked(job, false)
+			log.Printf("coordinator: job %s timed out after %s", job.ID, job.Timeout)
+		}
+	}
+}
+
+func (jm *JobManager) touchLocked(job *IngestJob, progress bool) {
+	if job == nil {
+		return
+	}
+	job.UpdatedAt = jm.nowFn()
+	if progress && job.Timeout > 0 {
+		job.Deadline = job.UpdatedAt.Add(job.Timeout)
+	}
 }
