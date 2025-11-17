@@ -85,8 +85,8 @@ type DistributedSnapshot struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	SnapshotId       int64                  `protobuf:"varint,1,opt,name=snapshot_id,json=snapshotId,proto3" json:"snapshot_id,omitempty"`
 	ParentSnapshotId int64                  `protobuf:"varint,2,opt,name=parent_snapshot_id,json=parentSnapshotId,proto3" json:"parent_snapshot_id,omitempty"`
-	ManifestListPath string                 `protobuf:"bytes,3,opt,name=manifest_list_path,json=manifestListPath,proto3" json:"manifest_list_path,omitempty"`
-	Summary          string                 `protobuf:"bytes,4,opt,name=summary,proto3" json:"summary,omitempty"`
+	CommitUuid       string                 `protobuf:"bytes,3,opt,name=commit_uuid,json=commitUuid,proto3" json:"commit_uuid,omitempty"`
+	Properties       map[string]string      `protobuf:"bytes,4,rep,name=properties,proto3" json:"properties,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -135,18 +135,18 @@ func (x *DistributedSnapshot) GetParentSnapshotId() int64 {
 	return 0
 }
 
-func (x *DistributedSnapshot) GetManifestListPath() string {
+func (x *DistributedSnapshot) GetCommitUuid() string {
 	if x != nil {
-		return x.ManifestListPath
+		return x.CommitUuid
 	}
 	return ""
 }
 
-func (x *DistributedSnapshot) GetSummary() string {
+func (x *DistributedSnapshot) GetProperties() map[string]string {
 	if x != nil {
-		return x.Summary
+		return x.Properties
 	}
-	return ""
+	return nil
 }
 
 type Task struct {
@@ -833,13 +833,19 @@ const file_internal_api_ingest_proto_rawDesc = "" +
 	"\x0fTableIdentifier\x12\x18\n" +
 	"\acatalog\x18\x01 \x01(\tR\acatalog\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12\x14\n" +
-	"\x05table\x18\x03 \x01(\tR\x05table\"\xac\x01\n" +
+	"\x05table\x18\x03 \x01(\tR\x05table\"\x8e\x02\n" +
 	"\x13DistributedSnapshot\x12\x1f\n" +
 	"\vsnapshot_id\x18\x01 \x01(\x03R\n" +
 	"snapshotId\x12,\n" +
-	"\x12parent_snapshot_id\x18\x02 \x01(\x03R\x10parentSnapshotId\x12,\n" +
-	"\x12manifest_list_path\x18\x03 \x01(\tR\x10manifestListPath\x12\x18\n" +
-	"\asummary\x18\x04 \x01(\tR\asummary\"\x82\x01\n" +
+	"\x12parent_snapshot_id\x18\x02 \x01(\x03R\x10parentSnapshotId\x12\x1f\n" +
+	"\vcommit_uuid\x18\x03 \x01(\tR\n" +
+	"commitUuid\x12H\n" +
+	"\n" +
+	"properties\x18\x04 \x03(\v2(.api.DistributedSnapshot.PropertiesEntryR\n" +
+	"properties\x1a=\n" +
+	"\x0fPropertiesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x82\x01\n" +
 	"\x04Task\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1e\n" +
 	"\n" +
@@ -911,7 +917,7 @@ func file_internal_api_ingest_proto_rawDescGZIP() []byte {
 	return file_internal_api_ingest_proto_rawDescData
 }
 
-var file_internal_api_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_internal_api_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_internal_api_ingest_proto_goTypes = []any{
 	(*TableIdentifier)(nil),        // 0: api.TableIdentifier
 	(*DistributedSnapshot)(nil),    // 1: api.DistributedSnapshot
@@ -926,32 +932,34 @@ var file_internal_api_ingest_proto_goTypes = []any{
 	(*AssignTasksResponse)(nil),    // 10: api.AssignTasksResponse
 	(*HeartbeatRequest)(nil),       // 11: api.HeartbeatRequest
 	(*HeartbeatResponse)(nil),      // 12: api.HeartbeatResponse
+	nil,                            // 13: api.DistributedSnapshot.PropertiesEntry
 }
 var file_internal_api_ingest_proto_depIdxs = []int32{
-	0,  // 0: api.StartJobRequest.table:type_name -> api.TableIdentifier
-	0,  // 1: api.StartJobResponse.table:type_name -> api.TableIdentifier
-	1,  // 2: api.StartJobResponse.snapshot:type_name -> api.DistributedSnapshot
-	2,  // 3: api.StartJobResponse.tasks:type_name -> api.Task
-	0,  // 4: api.CommitJobRequest.table:type_name -> api.TableIdentifier
-	0,  // 5: api.ReportManifestRequest.table:type_name -> api.TableIdentifier
-	0,  // 6: api.AssignTasksResponse.table:type_name -> api.TableIdentifier
-	1,  // 7: api.AssignTasksResponse.snapshot:type_name -> api.DistributedSnapshot
-	2,  // 8: api.AssignTasksResponse.tasks:type_name -> api.Task
-	3,  // 9: api.Coordinator.StartJob:input_type -> api.StartJobRequest
-	5,  // 10: api.Coordinator.CommitJob:input_type -> api.CommitJobRequest
-	7,  // 11: api.Coordinator.ReportManifest:input_type -> api.ReportManifestRequest
-	9,  // 12: api.Worker.AssignTasks:input_type -> api.AssignTasksRequest
-	11, // 13: api.Worker.Heartbeat:input_type -> api.HeartbeatRequest
-	4,  // 14: api.Coordinator.StartJob:output_type -> api.StartJobResponse
-	6,  // 15: api.Coordinator.CommitJob:output_type -> api.CommitJobResponse
-	8,  // 16: api.Coordinator.ReportManifest:output_type -> api.ReportManifestResponse
-	10, // 17: api.Worker.AssignTasks:output_type -> api.AssignTasksResponse
-	12, // 18: api.Worker.Heartbeat:output_type -> api.HeartbeatResponse
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	13, // 0: api.DistributedSnapshot.properties:type_name -> api.DistributedSnapshot.PropertiesEntry
+	0,  // 1: api.StartJobRequest.table:type_name -> api.TableIdentifier
+	0,  // 2: api.StartJobResponse.table:type_name -> api.TableIdentifier
+	1,  // 3: api.StartJobResponse.snapshot:type_name -> api.DistributedSnapshot
+	2,  // 4: api.StartJobResponse.tasks:type_name -> api.Task
+	0,  // 5: api.CommitJobRequest.table:type_name -> api.TableIdentifier
+	0,  // 6: api.ReportManifestRequest.table:type_name -> api.TableIdentifier
+	0,  // 7: api.AssignTasksResponse.table:type_name -> api.TableIdentifier
+	1,  // 8: api.AssignTasksResponse.snapshot:type_name -> api.DistributedSnapshot
+	2,  // 9: api.AssignTasksResponse.tasks:type_name -> api.Task
+	3,  // 10: api.Coordinator.StartJob:input_type -> api.StartJobRequest
+	5,  // 11: api.Coordinator.CommitJob:input_type -> api.CommitJobRequest
+	7,  // 12: api.Coordinator.ReportManifest:input_type -> api.ReportManifestRequest
+	9,  // 13: api.Worker.AssignTasks:input_type -> api.AssignTasksRequest
+	11, // 14: api.Worker.Heartbeat:input_type -> api.HeartbeatRequest
+	4,  // 15: api.Coordinator.StartJob:output_type -> api.StartJobResponse
+	6,  // 16: api.Coordinator.CommitJob:output_type -> api.CommitJobResponse
+	8,  // 17: api.Coordinator.ReportManifest:output_type -> api.ReportManifestResponse
+	10, // 18: api.Worker.AssignTasks:output_type -> api.AssignTasksResponse
+	12, // 19: api.Worker.Heartbeat:output_type -> api.HeartbeatResponse
+	15, // [15:20] is the sub-list for method output_type
+	10, // [10:15] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_internal_api_ingest_proto_init() }
@@ -965,7 +973,7 @@ func file_internal_api_ingest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_api_ingest_proto_rawDesc), len(file_internal_api_ingest_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
