@@ -10,7 +10,7 @@ import (
 	icebergpkg "github.com/apache/iceberg-go"
 	"github.com/apache/iceberg-go/catalog"
 	_ "github.com/apache/iceberg-go/catalog/glue"
-	_ "github.com/apache/iceberg-go/catalog/rest"
+	restcatalog "github.com/apache/iceberg-go/catalog/rest"
 	icebergio "github.com/apache/iceberg-go/io"
 	"github.com/apache/iceberg-go/table"
 )
@@ -41,6 +41,10 @@ type ManifestInfo struct {
 
 	file icebergpkg.ManifestFile
 }
+
+// ErrCommitConflict indicates that publishing the distributed snapshot failed
+// because another writer advanced the table head in the meantime.
+var ErrCommitConflict = errors.New("iceberg: distributed snapshot commit conflict")
 
 // ManifestFromFile converts an iceberg ManifestFile into a ManifestInfo value
 // that can be tracked by the coordinator state machine.
@@ -190,7 +194,23 @@ func (h *tableHandle) CommitDistributedSnapshot(ctx context.Context, ds *Distrib
 	}
 
 	_, err := h.tbl.CommitDistributedSnapshot(ctx, ds.descriptor, manifestFiles, summary)
-	return err
+	if err != nil {
+		if isCommitConflict(err) {
+			return fmt.Errorf("%w: %v", ErrCommitConflict, err)
+		}
+		return err
+	}
+	return nil
+}
+
+func isCommitConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, restcatalog.ErrCommitFailed) || errors.Is(err, restcatalog.ErrCommitStateUnknown) {
+		return true
+	}
+	return strings.Contains(err.Error(), "requirement failed")
 }
 
 func (h *tableHandle) CurrentSchema() *icebergpkg.Schema {

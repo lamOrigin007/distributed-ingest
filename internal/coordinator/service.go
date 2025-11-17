@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"log"
 
 	"github.com/example/distributed-ingest/internal/api"
 	"github.com/example/distributed-ingest/internal/iceberg"
@@ -64,21 +65,26 @@ func (s *Service) CommitJob(ctx context.Context, req *api.CommitJobRequest) (*ap
 	if !ok {
 		return nil, status.Error(codes.NotFound, "job not found")
 	}
+	switch job.Status {
+	case JobStatusCompleted:
+		return &api.CommitJobResponse{JobId: req.JobId, Committed: true, Message: "job already committed"}, nil
+	case JobStatusFailed, JobStatusConflict:
+		return nil, status.Errorf(codes.FailedPrecondition, "job is in %s state", job.Status)
+	}
 	if len(job.Manifests) == 0 {
 		return nil, status.Error(codes.FailedPrecondition, "no manifests have been reported")
 	}
-
-	if err := s.jobs.MarkCommitting(req.JobId); err != nil {
-		return nil, status.Errorf(codes.Internal, "mark committing: %v", err)
+	if !job.ReadyToCommit {
+		return nil, status.Error(codes.FailedPrecondition, "job is not ready to commit")
 	}
-	if err := s.jobs.MarkCompleted(req.JobId); err != nil {
-		return nil, status.Errorf(codes.Internal, "mark completed: %v", err)
+
+	if err := s.jobs.CommitJob(ctx, req.JobId); err != nil {
+		return nil, translateCommitError(err, req.JobId)
 	}
 
 	return &api.CommitJobResponse{
 		JobId:     req.JobId,
 		Committed: true,
-		Message:   "commit deferred to future implementation",
 	}, nil
 }
 
@@ -94,19 +100,48 @@ func (s *Service) ReportManifest(ctx context.Context, req *api.ReportManifestReq
 		return nil, status.Error(codes.InvalidArgument, "at least one manifest path is required")
 	}
 
+	readyForCommit := false
 	for _, path := range req.ManifestPaths {
 		if path == "" {
 			continue
 		}
-		if err := s.jobs.AddManifest(req.JobId, iceberg.ManifestInfo{Path: path}); err != nil {
+		ready, err := s.jobs.AddManifest(req.JobId, iceberg.ManifestInfo{Path: path})
+		if err != nil {
 			if errors.Is(err, ErrJobNotFound) {
 				return nil, status.Error(codes.NotFound, "job not found")
 			}
 			return nil, status.Errorf(codes.Internal, "add manifest: %v", err)
 		}
+		readyForCommit = readyForCommit || ready
+	}
+
+	if readyForCommit {
+		if err := s.jobs.CommitJob(ctx, req.JobId); err != nil {
+			return nil, translateCommitError(err, req.JobId)
+		}
 	}
 
 	return &api.ReportManifestResponse{Accepted: true}, nil
+}
+
+func translateCommitError(err error, jobID string) error {
+	if errors.Is(err, errTableClientMissing) {
+		return status.Error(codes.FailedPrecondition, "iceberg table client is not configured")
+	}
+	if errors.Is(err, ErrJobNotFound) {
+		return status.Error(codes.NotFound, "job not found")
+	}
+	if errors.Is(err, ErrJobNotReady) {
+		return status.Error(codes.FailedPrecondition, "job is not ready to commit")
+	}
+	if errors.Is(err, ErrJobInvalidState) {
+		return status.Error(codes.FailedPrecondition, "job is in an invalid state for commit")
+	}
+	if errors.Is(err, iceberg.ErrCommitConflict) {
+		log.Printf("coordinator: commit conflict for job %s: %v", jobID, err)
+		return status.Error(codes.Aborted, "distributed snapshot commit conflicted; please restart the job")
+	}
+	return status.Errorf(codes.Internal, "commit job: %v", err)
 }
 
 func fromProtoTable(tbl *api.TableIdentifier) iceberg.TableIdentifier {
