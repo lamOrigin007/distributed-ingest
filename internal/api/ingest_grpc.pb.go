@@ -22,6 +22,7 @@ const (
 	Coordinator_StartJob_FullMethodName       = "/api.Coordinator/StartJob"
 	Coordinator_CommitJob_FullMethodName      = "/api.Coordinator/CommitJob"
 	Coordinator_ReportManifest_FullMethodName = "/api.Coordinator/ReportManifest"
+	Coordinator_GetJobStatus_FullMethodName   = "/api.Coordinator/GetJobStatus"
 )
 
 // CoordinatorClient is the client API for Coordinator service.
@@ -31,6 +32,7 @@ type CoordinatorClient interface {
 	StartJob(ctx context.Context, in *StartJobRequest, opts ...grpc.CallOption) (*StartJobResponse, error)
 	CommitJob(ctx context.Context, in *CommitJobRequest, opts ...grpc.CallOption) (*CommitJobResponse, error)
 	ReportManifest(ctx context.Context, in *ReportManifestRequest, opts ...grpc.CallOption) (*ReportManifestResponse, error)
+	GetJobStatus(ctx context.Context, in *GetJobStatusRequest, opts ...grpc.CallOption) (*GetJobStatusResponse, error)
 }
 
 type coordinatorClient struct {
@@ -71,6 +73,16 @@ func (c *coordinatorClient) ReportManifest(ctx context.Context, in *ReportManife
 	return out, nil
 }
 
+func (c *coordinatorClient) GetJobStatus(ctx context.Context, in *GetJobStatusRequest, opts ...grpc.CallOption) (*GetJobStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetJobStatusResponse)
+	err := c.cc.Invoke(ctx, Coordinator_GetJobStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CoordinatorServer is the server API for Coordinator service.
 // All implementations must embed UnimplementedCoordinatorServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type CoordinatorServer interface {
 	StartJob(context.Context, *StartJobRequest) (*StartJobResponse, error)
 	CommitJob(context.Context, *CommitJobRequest) (*CommitJobResponse, error)
 	ReportManifest(context.Context, *ReportManifestRequest) (*ReportManifestResponse, error)
+	GetJobStatus(context.Context, *GetJobStatusRequest) (*GetJobStatusResponse, error)
 	mustEmbedUnimplementedCoordinatorServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedCoordinatorServer) CommitJob(context.Context, *CommitJobReque
 }
 func (UnimplementedCoordinatorServer) ReportManifest(context.Context, *ReportManifestRequest) (*ReportManifestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReportManifest not implemented")
+}
+func (UnimplementedCoordinatorServer) GetJobStatus(context.Context, *GetJobStatusRequest) (*GetJobStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetJobStatus not implemented")
 }
 func (UnimplementedCoordinatorServer) mustEmbedUnimplementedCoordinatorServer() {}
 func (UnimplementedCoordinatorServer) testEmbeddedByValue()                     {}
@@ -172,6 +188,24 @@ func _Coordinator_ReportManifest_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Coordinator_GetJobStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetJobStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoordinatorServer).GetJobStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Coordinator_GetJobStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoordinatorServer).GetJobStatus(ctx, req.(*GetJobStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Coordinator_ServiceDesc is the grpc.ServiceDesc for Coordinator service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var Coordinator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReportManifest",
 			Handler:    _Coordinator_ReportManifest_Handler,
+		},
+		{
+			MethodName: "GetJobStatus",
+			Handler:    _Coordinator_GetJobStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

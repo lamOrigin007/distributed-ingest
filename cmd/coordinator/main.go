@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/example/distributed-ingest/internal/api"
 	"github.com/example/distributed-ingest/internal/coordinator"
@@ -29,6 +30,7 @@ func main() {
 		log.Fatalf("failed to initialize iceberg client: %v", err)
 	}
 	jobManager := coordinator.NewJobManager(client)
+	jobManager.StartTimeoutWatcher(ctx, 30*time.Second)
 	grpcServer := grpc.NewServer()
 	api.RegisterCoordinatorServer(grpcServer, coordinator.NewService(jobManager))
 

@@ -218,11 +218,12 @@ func (x *Task) GetDescription() string {
 }
 
 type StartJobRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Table         *TableIdentifier       `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
-	Requester     string                 `protobuf:"bytes,2,opt,name=requester,proto3" json:"requester,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Table             *TableIdentifier       `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
+	Requester         string                 `protobuf:"bytes,2,opt,name=requester,proto3" json:"requester,omitempty"`
+	JobTimeoutSeconds int64                  `protobuf:"varint,3,opt,name=job_timeout_seconds,json=jobTimeoutSeconds,proto3" json:"job_timeout_seconds,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *StartJobRequest) Reset() {
@@ -267,6 +268,13 @@ func (x *StartJobRequest) GetRequester() string {
 		return x.Requester
 	}
 	return ""
+}
+
+func (x *StartJobRequest) GetJobTimeoutSeconds() int64 {
+	if x != nil {
+		return x.JobTimeoutSeconds
+	}
+	return 0
 }
 
 type StartJobResponse struct {
@@ -857,6 +865,194 @@ func (x *HeartbeatResponse) GetInstructions() string {
 	return ""
 }
 
+type GetJobStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobId         string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetJobStatusRequest) Reset() {
+	*x = GetJobStatusRequest{}
+	mi := &file_internal_api_ingest_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJobStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJobStatusRequest) ProtoMessage() {}
+
+func (x *GetJobStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_api_ingest_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJobStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetJobStatusRequest) Descriptor() ([]byte, []int) {
+	return file_internal_api_ingest_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetJobStatusRequest) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type JobStatus struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	JobId                 string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	Status                string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	ManifestCount         uint32                 `protobuf:"varint,3,opt,name=manifest_count,json=manifestCount,proto3" json:"manifest_count,omitempty"`
+	ReadyToCommit         bool                   `protobuf:"varint,4,opt,name=ready_to_commit,json=readyToCommit,proto3" json:"ready_to_commit,omitempty"`
+	ExpectedManifestCount uint32                 `protobuf:"varint,5,opt,name=expected_manifest_count,json=expectedManifestCount,proto3" json:"expected_manifest_count,omitempty"`
+	CreatedAtEpochMs      int64                  `protobuf:"varint,6,opt,name=created_at_epoch_ms,json=createdAtEpochMs,proto3" json:"created_at_epoch_ms,omitempty"`
+	UpdatedAtEpochMs      int64                  `protobuf:"varint,7,opt,name=updated_at_epoch_ms,json=updatedAtEpochMs,proto3" json:"updated_at_epoch_ms,omitempty"`
+	DeadlineEpochMs       int64                  `protobuf:"varint,8,opt,name=deadline_epoch_ms,json=deadlineEpochMs,proto3" json:"deadline_epoch_ms,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *JobStatus) Reset() {
+	*x = JobStatus{}
+	mi := &file_internal_api_ingest_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobStatus) ProtoMessage() {}
+
+func (x *JobStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_api_ingest_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobStatus.ProtoReflect.Descriptor instead.
+func (*JobStatus) Descriptor() ([]byte, []int) {
+	return file_internal_api_ingest_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *JobStatus) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+func (x *JobStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *JobStatus) GetManifestCount() uint32 {
+	if x != nil {
+		return x.ManifestCount
+	}
+	return 0
+}
+
+func (x *JobStatus) GetReadyToCommit() bool {
+	if x != nil {
+		return x.ReadyToCommit
+	}
+	return false
+}
+
+func (x *JobStatus) GetExpectedManifestCount() uint32 {
+	if x != nil {
+		return x.ExpectedManifestCount
+	}
+	return 0
+}
+
+func (x *JobStatus) GetCreatedAtEpochMs() int64 {
+	if x != nil {
+		return x.CreatedAtEpochMs
+	}
+	return 0
+}
+
+func (x *JobStatus) GetUpdatedAtEpochMs() int64 {
+	if x != nil {
+		return x.UpdatedAtEpochMs
+	}
+	return 0
+}
+
+func (x *JobStatus) GetDeadlineEpochMs() int64 {
+	if x != nil {
+		return x.DeadlineEpochMs
+	}
+	return 0
+}
+
+type GetJobStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Job           *JobStatus             `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetJobStatusResponse) Reset() {
+	*x = GetJobStatusResponse{}
+	mi := &file_internal_api_ingest_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetJobStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetJobStatusResponse) ProtoMessage() {}
+
+func (x *GetJobStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_api_ingest_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetJobStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetJobStatusResponse) Descriptor() ([]byte, []int) {
+	return file_internal_api_ingest_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetJobStatusResponse) GetJob() *JobStatus {
+	if x != nil {
+		return x.Job
+	}
+	return nil
+}
+
 var File_internal_api_ingest_proto protoreflect.FileDescriptor
 
 const file_internal_api_ingest_proto_rawDesc = "" +
@@ -885,10 +1081,11 @@ const file_internal_api_ingest_proto_rawDesc = "" +
 	"partitions\x12\x1f\n" +
 	"\vdata_source\x18\x03 \x01(\tR\n" +
 	"dataSource\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"[\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\x8b\x01\n" +
 	"\x0fStartJobRequest\x12*\n" +
 	"\x05table\x18\x01 \x01(\v2\x14.api.TableIdentifierR\x05table\x12\x1c\n" +
-	"\trequester\x18\x02 \x01(\tR\trequester\"\xac\x01\n" +
+	"\trequester\x18\x02 \x01(\tR\trequester\x12.\n" +
+	"\x13job_timeout_seconds\x18\x03 \x01(\x03R\x11jobTimeoutSeconds\"\xac\x01\n" +
 	"\x10StartJobResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12*\n" +
 	"\x05table\x18\x02 \x01(\v2\x14.api.TableIdentifierR\x05table\x124\n" +
@@ -932,11 +1129,25 @@ const file_internal_api_ingest_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\tR\x06status\"Q\n" +
 	"\x11HeartbeatResponse\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x12\"\n" +
-	"\finstructions\x18\x02 \x01(\tR\finstructions2\xcd\x01\n" +
+	"\finstructions\x18\x02 \x01(\tR\finstructions\",\n" +
+	"\x13GetJobStatusRequest\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\"\xcb\x02\n" +
+	"\tJobStatus\x12\x15\n" +
+	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12%\n" +
+	"\x0emanifest_count\x18\x03 \x01(\rR\rmanifestCount\x12&\n" +
+	"\x0fready_to_commit\x18\x04 \x01(\bR\rreadyToCommit\x126\n" +
+	"\x17expected_manifest_count\x18\x05 \x01(\rR\x15expectedManifestCount\x12-\n" +
+	"\x13created_at_epoch_ms\x18\x06 \x01(\x03R\x10createdAtEpochMs\x12-\n" +
+	"\x13updated_at_epoch_ms\x18\a \x01(\x03R\x10updatedAtEpochMs\x12*\n" +
+	"\x11deadline_epoch_ms\x18\b \x01(\x03R\x0fdeadlineEpochMs\"8\n" +
+	"\x14GetJobStatusResponse\x12 \n" +
+	"\x03job\x18\x01 \x01(\v2\x0e.api.JobStatusR\x03job2\x92\x02\n" +
 	"\vCoordinator\x127\n" +
 	"\bStartJob\x12\x14.api.StartJobRequest\x1a\x15.api.StartJobResponse\x12:\n" +
 	"\tCommitJob\x12\x15.api.CommitJobRequest\x1a\x16.api.CommitJobResponse\x12I\n" +
-	"\x0eReportManifest\x12\x1a.api.ReportManifestRequest\x1a\x1b.api.ReportManifestResponse2\x86\x01\n" +
+	"\x0eReportManifest\x12\x1a.api.ReportManifestRequest\x1a\x1b.api.ReportManifestResponse\x12C\n" +
+	"\fGetJobStatus\x12\x18.api.GetJobStatusRequest\x1a\x19.api.GetJobStatusResponse2\x86\x01\n" +
 	"\x06Worker\x12@\n" +
 	"\vAssignTasks\x12\x17.api.AssignTasksRequest\x1a\x18.api.AssignTasksResponse\x12:\n" +
 	"\tHeartbeat\x12\x15.api.HeartbeatRequest\x1a\x16.api.HeartbeatResponseB8Z6github.com/example/distributed-ingest/internal/api;apib\x06proto3"
@@ -953,7 +1164,7 @@ func file_internal_api_ingest_proto_rawDescGZIP() []byte {
 	return file_internal_api_ingest_proto_rawDescData
 }
 
-var file_internal_api_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_internal_api_ingest_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_internal_api_ingest_proto_goTypes = []any{
 	(*TableIdentifier)(nil),        // 0: api.TableIdentifier
 	(*DistributedSnapshot)(nil),    // 1: api.DistributedSnapshot
@@ -968,10 +1179,13 @@ var file_internal_api_ingest_proto_goTypes = []any{
 	(*AssignTasksResponse)(nil),    // 10: api.AssignTasksResponse
 	(*HeartbeatRequest)(nil),       // 11: api.HeartbeatRequest
 	(*HeartbeatResponse)(nil),      // 12: api.HeartbeatResponse
-	nil,                            // 13: api.DistributedSnapshot.PropertiesEntry
+	(*GetJobStatusRequest)(nil),    // 13: api.GetJobStatusRequest
+	(*JobStatus)(nil),              // 14: api.JobStatus
+	(*GetJobStatusResponse)(nil),   // 15: api.GetJobStatusResponse
+	nil,                            // 16: api.DistributedSnapshot.PropertiesEntry
 }
 var file_internal_api_ingest_proto_depIdxs = []int32{
-	13, // 0: api.DistributedSnapshot.properties:type_name -> api.DistributedSnapshot.PropertiesEntry
+	16, // 0: api.DistributedSnapshot.properties:type_name -> api.DistributedSnapshot.PropertiesEntry
 	0,  // 1: api.StartJobRequest.table:type_name -> api.TableIdentifier
 	0,  // 2: api.StartJobResponse.table:type_name -> api.TableIdentifier
 	1,  // 3: api.StartJobResponse.snapshot:type_name -> api.DistributedSnapshot
@@ -981,21 +1195,24 @@ var file_internal_api_ingest_proto_depIdxs = []int32{
 	0,  // 7: api.AssignTasksRequest.table:type_name -> api.TableIdentifier
 	1,  // 8: api.AssignTasksRequest.snapshot:type_name -> api.DistributedSnapshot
 	2,  // 9: api.AssignTasksRequest.tasks:type_name -> api.Task
-	3,  // 10: api.Coordinator.StartJob:input_type -> api.StartJobRequest
-	5,  // 11: api.Coordinator.CommitJob:input_type -> api.CommitJobRequest
-	7,  // 12: api.Coordinator.ReportManifest:input_type -> api.ReportManifestRequest
-	9,  // 13: api.Worker.AssignTasks:input_type -> api.AssignTasksRequest
-	11, // 14: api.Worker.Heartbeat:input_type -> api.HeartbeatRequest
-	4,  // 15: api.Coordinator.StartJob:output_type -> api.StartJobResponse
-	6,  // 16: api.Coordinator.CommitJob:output_type -> api.CommitJobResponse
-	8,  // 17: api.Coordinator.ReportManifest:output_type -> api.ReportManifestResponse
-	10, // 18: api.Worker.AssignTasks:output_type -> api.AssignTasksResponse
-	12, // 19: api.Worker.Heartbeat:output_type -> api.HeartbeatResponse
-	15, // [15:20] is the sub-list for method output_type
-	10, // [10:15] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	14, // 10: api.GetJobStatusResponse.job:type_name -> api.JobStatus
+	3,  // 11: api.Coordinator.StartJob:input_type -> api.StartJobRequest
+	5,  // 12: api.Coordinator.CommitJob:input_type -> api.CommitJobRequest
+	7,  // 13: api.Coordinator.ReportManifest:input_type -> api.ReportManifestRequest
+	13, // 14: api.Coordinator.GetJobStatus:input_type -> api.GetJobStatusRequest
+	9,  // 15: api.Worker.AssignTasks:input_type -> api.AssignTasksRequest
+	11, // 16: api.Worker.Heartbeat:input_type -> api.HeartbeatRequest
+	4,  // 17: api.Coordinator.StartJob:output_type -> api.StartJobResponse
+	6,  // 18: api.Coordinator.CommitJob:output_type -> api.CommitJobResponse
+	8,  // 19: api.Coordinator.ReportManifest:output_type -> api.ReportManifestResponse
+	15, // 20: api.Coordinator.GetJobStatus:output_type -> api.GetJobStatusResponse
+	10, // 21: api.Worker.AssignTasks:output_type -> api.AssignTasksResponse
+	12, // 22: api.Worker.Heartbeat:output_type -> api.HeartbeatResponse
+	17, // [17:23] is the sub-list for method output_type
+	11, // [11:17] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_internal_api_ingest_proto_init() }
@@ -1009,7 +1226,7 @@ func file_internal_api_ingest_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_api_ingest_proto_rawDesc), len(file_internal_api_ingest_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   14,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

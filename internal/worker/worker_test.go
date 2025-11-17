@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	icebergpkg "github.com/apache/iceberg-go"
 	icebergio "github.com/apache/iceberg-go/io"
@@ -25,6 +26,9 @@ import (
 
 func TestWorkerProcessesAssignmentsAndReportsManifest(t *testing.T) {
 	ctx := context.Background()
+	t.Cleanup(func() {
+		_ = os.RemoveAll("file:")
+	})
 
 	tableDir := t.TempDir()
 	fakeTbl := newFakeTable(fmt.Sprintf("file://%s/table", tableDir))
@@ -44,7 +48,7 @@ func TestWorkerProcessesAssignmentsAndReportsManifest(t *testing.T) {
 	defer workerConn.Close()
 
 	tableID := iceberg.TableIdentifier{Namespace: "default", Table: "events"}
-	job, err := jobManager.CreateJob(ctx, tableID, map[string]string{"requested_by": "test"})
+	job, err := jobManager.CreateJob(ctx, tableID, map[string]string{"requested_by": "test"}, time.Minute)
 	require.NoError(t, err)
 
 	workerClient := api.NewWorkerClient(workerConn)
@@ -77,6 +81,46 @@ func TestWorkerProcessesAssignmentsAndReportsManifest(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Dir(fsPath))
 	require.NoError(t, err)
 	require.NotEmpty(t, entries)
+}
+
+func TestWorkerAssignmentsAreIdempotent(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_ = os.RemoveAll("file:")
+	})
+	tableDir := t.TempDir()
+	fakeTbl := newFakeTable(fmt.Sprintf("file://%s/table", tableDir))
+	fakeClient := &fakeTableClient{table: fakeTbl}
+	jobManager := coordinator.NewJobManager(fakeClient)
+	coordServer, coordConn := startCoordinatorServer(t, coordinator.NewService(jobManager))
+	defer coordServer.Stop()
+	defer coordConn.Close()
+	coordClient := NewCoordinatorClient(api.NewCoordinatorClient(coordConn))
+	dataSource := NewStaticDataSource(fmt.Sprintf("file://%s/data", tableDir))
+	logic := NewWorker("worker-1", coordClient, fakeClient, dataSource)
+	workerServer, workerConn := startWorkerServer(t, logic)
+	defer workerServer.Stop()
+	defer workerConn.Close()
+	tableID := iceberg.TableIdentifier{Namespace: "default", Table: "events"}
+	job, err := jobManager.CreateJob(ctx, tableID, nil, time.Minute)
+	require.NoError(t, err)
+	workerClient := api.NewWorkerClient(workerConn)
+	assignReq := &api.AssignTasksRequest{
+		WorkerId: "worker-1",
+		JobId:    job.ID,
+		Table:    &api.TableIdentifier{Namespace: tableID.Namespace, Table: tableID.Table},
+		Snapshot: &api.DistributedSnapshot{SnapshotId: job.DistributedSnapshot.SnapshotID, CommitUuid: job.DistributedSnapshot.CommitUUID},
+		Tasks:    []*api.Task{{TaskId: "task-1"}},
+	}
+	resp1, err := workerClient.AssignTasks(ctx, assignReq)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), resp1.ManifestsCreated)
+	resp2, err := workerClient.AssignTasks(ctx, assignReq)
+	require.NoError(t, err)
+	require.Equal(t, uint32(0), resp2.ManifestsCreated)
+	stored, ok := jobManager.GetJob(job.ID)
+	require.True(t, ok)
+	require.Len(t, stored.Manifests, 1)
 }
 
 func startCoordinatorServer(t *testing.T, svc *coordinator.Service) (*grpc.Server, *grpc.ClientConn) {
