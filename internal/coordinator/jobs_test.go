@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	icebergpkg "github.com/apache/iceberg-go"
@@ -48,8 +49,12 @@ func TestJobManagerAddManifest(t *testing.T) {
 	}
 
 	manifest := iceberg.ManifestInfo{Path: "manifest.avro"}
-	if err := jm.AddManifest(job.ID, manifest); err != nil {
+	ready, err := jm.AddManifest(job.ID, manifest)
+	if err != nil {
 		t.Fatalf("AddManifest failed: %v", err)
+	}
+	if !ready {
+		t.Fatalf("job should be ready after the first manifest by default")
 	}
 
 	stored, ok := jm.GetJob(job.ID)
@@ -86,6 +91,81 @@ func TestJobManagerDistributedSnapshotPreserved(t *testing.T) {
 	}
 }
 
+func TestJobManagerCommitJobSuccess(t *testing.T) {
+	ctx := context.Background()
+	snapshot := &iceberg.DistributedSnapshot{SnapshotID: 99}
+	tbl := &fakeTable{snapshot: snapshot}
+	jm := NewJobManager(&fakeTableClient{table: tbl})
+
+	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil)
+	if err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	job.ExpectedManifests = 2
+
+	ready, err := jm.AddManifest(job.ID, iceberg.ManifestInfo{Path: "one.avro"})
+	if err != nil {
+		t.Fatalf("AddManifest failed: %v", err)
+	}
+	if ready {
+		t.Fatalf("job should not be ready after first manifest")
+	}
+	ready, err = jm.AddManifest(job.ID, iceberg.ManifestInfo{Path: "two.avro"})
+	if err != nil {
+		t.Fatalf("AddManifest failed: %v", err)
+	}
+	if !ready {
+		t.Fatalf("job should be ready after reaching threshold")
+	}
+
+	if err := jm.CommitJob(ctx, job.ID); err != nil {
+		t.Fatalf("CommitJob failed: %v", err)
+	}
+	stored, ok := jm.GetJob(job.ID)
+	if !ok {
+		t.Fatalf("job lookup failed")
+	}
+	if stored.Status != JobStatusCompleted {
+		t.Fatalf("expected status %s, got %s", JobStatusCompleted, stored.Status)
+	}
+	if tbl.commitCount != 1 {
+		t.Fatalf("expected 1 commit, got %d", tbl.commitCount)
+	}
+}
+
+func TestJobManagerCommitJobConflict(t *testing.T) {
+	ctx := context.Background()
+	snapshot := &iceberg.DistributedSnapshot{SnapshotID: 100}
+	tbl := &fakeTable{snapshot: snapshot, commitErr: iceberg.ErrCommitConflict}
+	jm := NewJobManager(&fakeTableClient{table: tbl})
+
+	job, err := jm.CreateJob(ctx, iceberg.TableIdentifier{Table: "tbl"}, nil)
+	if err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	job.ExpectedManifests = 1
+
+	ready, err := jm.AddManifest(job.ID, iceberg.ManifestInfo{Path: "conflict.avro"})
+	if err != nil {
+		t.Fatalf("AddManifest failed: %v", err)
+	}
+	if !ready {
+		t.Fatalf("job should be ready after single manifest when threshold is 1")
+	}
+
+	err = jm.CommitJob(ctx, job.ID)
+	if !errors.Is(err, iceberg.ErrCommitConflict) {
+		t.Fatalf("expected commit conflict error, got %v", err)
+	}
+	stored, ok := jm.GetJob(job.ID)
+	if !ok {
+		t.Fatalf("job lookup failed")
+	}
+	if stored.Status != JobStatusConflict {
+		t.Fatalf("expected status %s, got %s", JobStatusConflict, stored.Status)
+	}
+}
+
 type fakeTableClient struct {
 	table iceberg.Table
 	err   error
@@ -99,7 +179,9 @@ func (f *fakeTableClient) OpenTable(ctx context.Context, identifier iceberg.Tabl
 }
 
 type fakeTable struct {
-	snapshot *iceberg.DistributedSnapshot
+	snapshot    *iceberg.DistributedSnapshot
+	commitErr   error
+	commitCount int
 }
 
 func (f *fakeTable) BeginDistributedSnapshot(ctx context.Context, props map[string]string) (*iceberg.DistributedSnapshot, error) {
@@ -107,6 +189,10 @@ func (f *fakeTable) BeginDistributedSnapshot(ctx context.Context, props map[stri
 }
 
 func (f *fakeTable) CommitDistributedSnapshot(ctx context.Context, ds *iceberg.DistributedSnapshot, manifests []iceberg.ManifestInfo, summary map[string]string) error {
+	if f.commitErr != nil {
+		return f.commitErr
+	}
+	f.commitCount++
 	return nil
 }
 

@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"errors"
+	"maps"
 	"sync"
 
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ const (
 	JobStatusCommitting JobStatus = "COMMITTING"
 	JobStatusCompleted  JobStatus = "COMPLETED"
 	JobStatusFailed     JobStatus = "FAILED"
+	JobStatusConflict   JobStatus = "CONFLICT"
 )
 
 // IngestJob contains the state tracked by the coordinator for each ingest run.
@@ -28,12 +30,21 @@ type IngestJob struct {
 	DistributedSnapshot *iceberg.DistributedSnapshot
 	Manifests           []iceberg.ManifestInfo
 	Status              JobStatus
+	ExpectedManifests   int
+	ReadyToCommit       bool
+	Summary             map[string]string
 }
 
 var (
 	errTableClientMissing = errors.New("coordinator: table client is not configured")
 	// ErrJobNotFound is returned when a job lookup fails.
 	ErrJobNotFound = errors.New("coordinator: job not found")
+	// ErrJobNotReady is returned when a commit is attempted before a job reaches the
+	// ready threshold.
+	ErrJobNotReady = errors.New("coordinator: job is not ready to commit")
+	// ErrJobInvalidState is returned when a commit is attempted from a terminal
+	// status.
+	ErrJobInvalidState = errors.New("coordinator: job is in an invalid state for commit")
 )
 
 // JobManager keeps ingest job metadata in memory.
@@ -77,6 +88,8 @@ func (jm *JobManager) CreateJob(ctx context.Context, tableID iceberg.TableIdenti
 		TableID:             tableID,
 		DistributedSnapshot: snapshot,
 		Status:              JobStatusRunning,
+		ExpectedManifests:   1,
+		Summary:             map[string]string{"operation": "append"},
 	}
 
 	jm.mu.Lock()
@@ -101,18 +114,21 @@ func (jm *JobManager) GetJob(id string) (*IngestJob, bool) {
 	if len(job.Manifests) > 0 {
 		clone.Manifests = append([]iceberg.ManifestInfo(nil), job.Manifests...)
 	}
+	if len(job.Summary) > 0 {
+		clone.Summary = maps.Clone(job.Summary)
+	}
 
 	return &clone, true
 }
 
 // AddManifest registers a manifest file for the provided job identifier.
-func (jm *JobManager) AddManifest(jobID string, manifest iceberg.ManifestInfo) error {
+func (jm *JobManager) AddManifest(jobID string, manifest iceberg.ManifestInfo) (bool, error) {
 	jm.mu.Lock()
 	defer jm.mu.Unlock()
 
 	job, ok := jm.jobs[jobID]
 	if !ok {
-		return ErrJobNotFound
+		return false, ErrJobNotFound
 	}
 
 	job.Manifests = append(job.Manifests, manifest)
@@ -120,7 +136,84 @@ func (jm *JobManager) AddManifest(jobID string, manifest iceberg.ManifestInfo) e
 		job.Status = JobStatusRunning
 	}
 
-	return nil
+	readyNow := false
+	if !job.ReadyToCommit {
+		threshold := job.ExpectedManifests
+		if threshold <= 0 {
+			threshold = 1
+		}
+		if len(job.Manifests) >= threshold {
+			job.ReadyToCommit = true
+			readyNow = true
+		}
+	}
+
+	return readyNow, nil
+}
+
+// CommitJob publishes the distributed snapshot manifests to the target table.
+func (jm *JobManager) CommitJob(ctx context.Context, jobID string) error {
+	if jm.tableClient == nil {
+		return errTableClientMissing
+	}
+
+	jm.mu.Lock()
+	job, ok := jm.jobs[jobID]
+	if !ok {
+		jm.mu.Unlock()
+		return ErrJobNotFound
+	}
+	if job.Status == JobStatusCompleted {
+		jm.mu.Unlock()
+		return nil
+	}
+	if job.Status == JobStatusFailed || job.Status == JobStatusConflict {
+		jm.mu.Unlock()
+		return ErrJobInvalidState
+	}
+	if len(job.Manifests) == 0 || !job.ReadyToCommit {
+		jm.mu.Unlock()
+		return ErrJobNotReady
+	}
+	job.Status = JobStatusCommitting
+	manifests := append([]iceberg.ManifestInfo(nil), job.Manifests...)
+	ds := job.DistributedSnapshot
+	tableID := job.TableID
+	var summary map[string]string
+	if len(job.Summary) > 0 {
+		summary = maps.Clone(job.Summary)
+	}
+	jm.mu.Unlock()
+
+	tbl, err := jm.tableClient.OpenTable(ctx, tableID)
+	if err != nil {
+		jm.setStatus(jobID, JobStatusFailed)
+		return err
+	}
+	if ds == nil {
+		jm.setStatus(jobID, JobStatusFailed)
+		return errors.New("coordinator: distributed snapshot metadata missing")
+	}
+
+	commitErr := tbl.CommitDistributedSnapshot(ctx, ds, manifests, summary)
+	finalStatus := JobStatusCompleted
+	if commitErr != nil {
+		if errors.Is(commitErr, iceberg.ErrCommitConflict) {
+			finalStatus = JobStatusConflict
+		} else {
+			finalStatus = JobStatusFailed
+		}
+	}
+	jm.setStatus(jobID, finalStatus)
+	return commitErr
+}
+
+func (jm *JobManager) setStatus(jobID string, status JobStatus) {
+	jm.mu.Lock()
+	defer jm.mu.Unlock()
+	if job, ok := jm.jobs[jobID]; ok {
+		job.Status = status
+	}
 }
 
 // MarkCommitting transitions the job into the committing state.

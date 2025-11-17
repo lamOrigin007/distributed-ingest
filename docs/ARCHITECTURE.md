@@ -45,3 +45,22 @@ physical ingest tasks and report newly created manifests.
 4. After collecting manifests from all workers, the coordinator performs the
    final `CommitDistributedSnapshot`, passing the snapshot metadata plus the
    ordered manifest paths, to atomically publish the ingest.
+
+## Commit readiness and conflict handling
+The coordinator tracks ingest progress inside the in-memory `JobManager`.
+Each job stores the manifests that have been reported as well as a configurable
+threshold of how many manifests are required before it can be committed. The
+default threshold is one manifest, but tests or orchestration layers can adjust
+the value to match the number of worker tasks. Every call to `ReportManifest`
+updates the job state and, once the threshold is reached, the coordinator
+automatically invokes `CommitDistributedSnapshot`. External orchestrators can
+still call the `CommitJob` RPC to force a commit; the RPC is idempotent when the
+job is already in the `COMPLETED` state.
+
+During the commit phase the coordinator relies on Iceberg's optimistic
+concurrency controls. If another writer updates the same table before the
+distributed snapshot is published, the Iceberg client returns an error that the
+coordinator maps to the `CONFLICT` job status and surfaces as an `ABORTED`
+gRPC error. Operators must rebuild the distributed snapshot (or restart the job)
+after resolving the underlying contention. All other commit failures transition
+the job to the `FAILED` status so the orchestrator can diagnose or retry.
