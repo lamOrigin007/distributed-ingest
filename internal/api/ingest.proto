@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "github.com/example/distributed-ingest/internal/api;api";
+
+message TableIdentifier {
+  string catalog = 1;
+  string namespace = 2;
+  string table = 3;
+}
+
+message DistributedSnapshot {
+  int64 snapshot_id = 1;
+  int64 parent_snapshot_id = 2;
+  string manifest_list_path = 3;
+  string summary = 4;
+}
+
+message Task {
+  string task_id = 1;
+  repeated string partitions = 2;
+  string data_source = 3;
+  string description = 4;
+}
+
+message StartJobRequest {
+  TableIdentifier table = 1;
+  string requester = 2;
+}
+
+message StartJobResponse {
+  string job_id = 1;
+  TableIdentifier table = 2;
+  DistributedSnapshot snapshot = 3;
+  repeated Task tasks = 4;
+}
+
+message CommitJobRequest {
+  string job_id = 1;
+  TableIdentifier table = 2;
+  int64 snapshot_id = 3;
+  repeated string manifest_paths = 4;
+}
+
+message CommitJobResponse {
+  string job_id = 1;
+  bool committed = 2;
+  string message = 3;
+}
+
+message ReportManifestRequest {
+  string job_id = 1;
+  TableIdentifier table = 2;
+  int64 snapshot_id = 3;
+  string worker_id = 4;
+  repeated string manifest_paths = 5;
+}
+
+message ReportManifestResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message AssignTasksRequest {
+  string worker_id = 1;
+  string job_id = 2;
+}
+
+message AssignTasksResponse {
+  string job_id = 1;
+  TableIdentifier table = 2;
+  DistributedSnapshot snapshot = 3;
+  repeated Task tasks = 4;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  string job_id = 2;
+  string status = 3;
+}
+
+message HeartbeatResponse {
+  bool healthy = 1;
+  string instructions = 2;
+}
+
+service Coordinator {
+  rpc StartJob(StartJobRequest) returns (StartJobResponse);
+  rpc CommitJob(CommitJobRequest) returns (CommitJobResponse);
+  rpc ReportManifest(ReportManifestRequest) returns (ReportManifestResponse);
+}
+
+service Worker {
+  rpc AssignTasks(AssignTasksRequest) returns (AssignTasksResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
